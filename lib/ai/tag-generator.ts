@@ -1,8 +1,37 @@
 import * as tf from "@tensorflow/tfjs";
+import "@tensorflow/tfjs-backend-webgl";
+import "@tensorflow/tfjs-backend-cpu";
 import * as use from "@tensorflow-models/universal-sentence-encoder";
 
 let model: use.UniversalSentenceEncoder | null = null;
 let isLoading = false;
+let backendInitialized = false;
+
+/**
+ * Initialize TensorFlow.js backend
+ */
+async function initializeBackend(): Promise<void> {
+  if (backendInitialized) return;
+
+  try {
+    // Try WebGL first (faster), fallback to CPU
+    await tf.setBackend("webgl");
+    await tf.ready();
+    console.log("TensorFlow.js backend initialized: webgl");
+    backendInitialized = true;
+  } catch (error) {
+    console.warn("WebGL backend failed, falling back to CPU:", error);
+    try {
+      await tf.setBackend("cpu");
+      await tf.ready();
+      console.log("TensorFlow.js backend initialized: cpu");
+      backendInitialized = true;
+    } catch (cpuError) {
+      console.error("Failed to initialize any backend:", cpuError);
+      throw new Error("Failed to initialize TensorFlow.js backend");
+    }
+  }
+}
 
 /**
  * Load Universal Sentence Encoder model
@@ -13,6 +42,9 @@ export async function loadModel(): Promise<void> {
 
   isLoading = true;
   try {
+    // Initialize backend first
+    await initializeBackend();
+
     console.log("Loading Universal Sentence Encoder model...");
     model = await use.load();
     console.log("Model loaded successfully");
@@ -117,15 +149,15 @@ function extractKeywords(text: string, maxKeywords: number = 5): string[] {
  * Generate 1-3 tags based on memo content using semantic analysis
  */
 export async function generateTags(content: string): Promise<string[]> {
-  if (!model) {
-    await loadModel();
-  }
-
-  if (!model) {
-    throw new Error("Model is not loaded");
-  }
-
   try {
+    if (!model) {
+      await loadModel();
+    }
+
+    if (!model) {
+      throw new Error("Model is not loaded");
+    }
+
     // Extract candidate keywords
     const keywords = extractKeywords(content, 10);
 
@@ -141,32 +173,37 @@ export async function generateTags(content: string): Promise<string[]> {
     }
 
     // Use semantic similarity to select the most relevant tags
-    // Embed the full content
-    const contentEmbedding = await model.embed([content]);
-    const contentVector = await contentEmbedding.array();
+    try {
+      // Embed the full content
+      const contentEmbedding = await model.embed([content]);
+      const contentVector = await contentEmbedding.array();
 
-    // Embed each keyword
-    const keywordEmbeddings = await model.embed(keywords);
-    const keywordVectors = await keywordEmbeddings.array();
+      // Embed each keyword
+      const keywordEmbeddings = await model.embed(keywords);
+      const keywordVectors = await keywordEmbeddings.array();
 
-    // Calculate cosine similarity between content and each keyword
-    const similarities = keywordVectors[0].map((_, i) => {
-      const keywordVector = keywordVectors.map((kv) => kv[i]);
-      const similarity = cosineSimilarity(contentVector[0], keywordVector);
-      return { keyword: keywords[i], similarity };
-    });
+      // Calculate cosine similarity between content and each keyword
+      const similarities = keywordVectors[0].map((_, i) => {
+        const keywordVector = keywordVectors.map((kv) => kv[i]);
+        const similarity = cosineSimilarity(contentVector[0], keywordVector);
+        return { keyword: keywords[i], similarity };
+      });
 
-    // Sort by similarity and take top 3
-    const topTags = similarities
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, 3)
-      .map((item) => item.keyword);
+      // Sort by similarity and take top 3
+      const topTags = similarities
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 3)
+        .map((item) => item.keyword);
 
-    // Cleanup tensors to prevent memory leaks
-    contentEmbedding.dispose();
-    keywordEmbeddings.dispose();
+      // Cleanup tensors to prevent memory leaks
+      contentEmbedding.dispose();
+      keywordEmbeddings.dispose();
 
-    return topTags;
+      return topTags;
+    } catch (embedError) {
+      console.warn("Semantic analysis failed, using keyword extraction:", embedError);
+      return keywords.slice(0, 3);
+    }
   } catch (error) {
     console.error("Failed to generate tags:", error);
     // Fallback: return simple keyword extraction
