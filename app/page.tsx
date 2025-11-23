@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import {
   ChartPie,
+  Loader2,
   LogOut,
   MessageCircle,
   Network,
@@ -11,32 +12,23 @@ import {
   Send,
   Sparkles,
   Wand2,
+  X,
 } from "lucide-react";
 
 import { signInWithGoogle, signOut, getCurrentUser } from "@/lib/auth";
-
-const memoHistory = [
-  {
-    title: "주말 여행 아이디어",
-    excerpt: "도쿄 근교 1박 2일, 교통 + 예산 체크 리스트",
-    tags: ["여행", "리서치"],
-    time: "방금 전",
-  },
-  {
-    title: "팀 회의 메모",
-    excerpt: "프로토타입 피드백 정리, 전환율 추적 계획",
-    tags: ["업무", "제품"],
-    time: "2시간 전",
-  },
-  {
-    title: "AI 제안 실험",
-    excerpt: "메모 패턴 학습시키는 프롬프트 구조 초안",
-    tags: ["AI", "아이디어"],
-    time: "어제",
-  },
-];
-
-const tagSuggestions = ["업무", "아이디어", "리서치"];
+import { createClient } from "@/lib/supabase/client";
+import {
+  createMemo,
+  getMemos,
+  searchMemos as searchMemosAPI,
+  type Memo,
+} from "@/lib/memo";
+import {
+  generateTags,
+  generateTitle,
+  loadModel,
+  isModelLoaded,
+} from "@/lib/ai/tag-generator";
 
 const insights = [
   {
@@ -59,16 +51,62 @@ const chatThread = [
   { role: "ai", message: "기획 ✅, QA 진행 중, 출시일 확정 필요. 태그: 업무, 출시" },
 ];
 
+function formatTimeAgo(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return "방금 전";
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}분 전`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}시간 전`;
+  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}일 전`;
+  return date.toLocaleDateString("ko-KR");
+}
+
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [memos, setMemos] = useState<Memo[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Memo input states
+  const [memoTitle, setMemoTitle] = useState("");
+  const [memoContent, setMemoContent] = useState("");
+  const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [customTag, setCustomTag] = useState("");
+  const [isGeneratingTags, setIsGeneratingTags] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [modelLoading, setModelLoading] = useState(true);
 
   useEffect(() => {
-    // 페이지 로드 시 사용자 세션 확인
+    // Load TensorFlow model on app start
+    const initModel = async () => {
+      try {
+        await loadModel();
+        console.log("Model loaded successfully");
+      } catch (error) {
+        console.error("Failed to load model:", error);
+      } finally {
+        setModelLoading(false);
+      }
+    };
+
+    initModel();
+  }, []);
+
+  useEffect(() => {
+    // Check user session on page load
     const checkUser = async () => {
       try {
         const currentUser = await getCurrentUser();
         setUser(currentUser);
+
+        if (currentUser?.email) {
+          // Load memos for the user
+          await loadMemos(currentUser.email);
+        }
       } catch (error) {
         console.error("사용자 정보 가져오기 실패:", error);
       } finally {
@@ -79,10 +117,19 @@ export default function Home() {
     checkUser();
   }, []);
 
+  const loadMemos = async (userEmail: string) => {
+    try {
+      const supabase = createClient();
+      const fetchedMemos = await getMemos(supabase, userEmail);
+      setMemos(fetchedMemos);
+    } catch (error) {
+      console.error("Failed to load memos:", error);
+    }
+  };
+
   const handleGoogleLogin = async () => {
     try {
       await signInWithGoogle();
-      // signInWithGoogle은 자동으로 리다이렉트됨
     } catch (error) {
       console.error("로그인 실패:", error);
       alert("로그인에 실패했습니다. 다시 시도해주세요.");
@@ -93,10 +140,146 @@ export default function Home() {
     try {
       await signOut();
       setUser(null);
+      setMemos([]);
       window.location.reload();
     } catch (error) {
       console.error("로그아웃 실패:", error);
       alert("로그아웃에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  const handleGenerateTags = async () => {
+    if (!memoContent.trim() || !isModelLoaded()) {
+      alert("메모 내용을 입력하고 AI 모델이 로드될 때까지 기다려주세요.");
+      return;
+    }
+
+    setIsGeneratingTags(true);
+    try {
+      const tags = await generateTags(memoContent);
+      setSuggestedTags(tags);
+      // Auto-select first tag if no tags are selected
+      if (selectedTags.length === 0 && tags.length > 0) {
+        setSelectedTags([tags[0]]);
+      }
+    } catch (error) {
+      console.error("Failed to generate tags:", error);
+      alert("태그 생성에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsGeneratingTags(false);
+    }
+  };
+
+  const handleTagClick = (tag: string) => {
+    if (selectedTags.includes(tag)) {
+      setSelectedTags(selectedTags.filter((t) => t !== tag));
+    } else if (selectedTags.length < 3) {
+      setSelectedTags([...selectedTags, tag]);
+    } else {
+      alert("최대 3개의 태그만 선택할 수 있습니다.");
+    }
+  };
+
+  const handleAddCustomTag = () => {
+    if (!customTag.trim()) return;
+
+    if (selectedTags.length >= 3) {
+      alert("태그는 최대 3개까지만 추가할 수 있습니다.");
+      return;
+    }
+
+    if (selectedTags.includes(customTag.trim())) {
+      alert("이미 추가된 태그입니다.");
+      return;
+    }
+
+    setSelectedTags([...selectedTags, customTag.trim()]);
+    setCustomTag("");
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    setSelectedTags(selectedTags.filter((t) => t !== tag));
+  };
+
+  const handleSaveMemo = async () => {
+    if (!user?.email) {
+      alert("로그인이 필요합니다.");
+      return;
+    }
+
+    if (!memoContent.trim()) {
+      alert("메모 내용을 입력해주세요.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Generate title if not provided
+      let finalTitle = memoTitle.trim();
+      if (!finalTitle) {
+        finalTitle = await generateTitle(memoContent);
+      }
+
+      // If no tags selected, use first suggested tag or generate new tags
+      let finalTags = [...selectedTags];
+      if (finalTags.length === 0) {
+        if (suggestedTags.length > 0) {
+          finalTags = [suggestedTags[0]];
+        } else {
+          const generatedTags = await generateTags(memoContent);
+          finalTags = generatedTags.length > 0 ? [generatedTags[0]] : ["메모"];
+        }
+      }
+
+      const supabase = createClient();
+      await createMemo(supabase, {
+        title: finalTitle,
+        content: memoContent,
+        tags: finalTags,
+        user_email: user.email,
+      });
+
+      // Reset form
+      setMemoTitle("");
+      setMemoContent("");
+      setSuggestedTags([]);
+      setSelectedTags([]);
+      setCustomTag("");
+
+      // Reload memos
+      await loadMemos(user.email);
+
+      alert("메모가 저장되었습니다!");
+    } catch (error) {
+      console.error("Failed to save memo:", error);
+      alert("메모 저장에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!user?.email || !searchQuery.trim()) {
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const supabase = createClient();
+      const results = await searchMemosAPI(supabase, searchQuery, user.email);
+      setMemos(results);
+    } catch (error) {
+      console.error("Failed to search memos:", error);
+      alert("검색에 실패했습니다.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleClearSearch = async () => {
+    setSearchQuery("");
+    if (user?.email) {
+      await loadMemos(user.email);
     }
   };
 
@@ -144,6 +327,7 @@ export default function Home() {
         </header>
 
         <div className="grid min-h-[70vh] grid-cols-[320px_1fr_340px] gap-4">
+          {/* Left Section - Memo Input */}
           <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -159,76 +343,222 @@ export default function Home() {
                 <input
                   type="search"
                   placeholder="검색"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleSearch();
+                    }
+                  }}
                   className="w-full rounded-full border border-slate-200 bg-slate-50 px-8 py-2 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:bg-white"
                 />
+                {searchQuery && (
+                  <button
+                    onClick={handleClearSearch}
+                    className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
 
-            <div className="space-y-3">
-              {memoHistory.map((memo) => (
-                <article
-                  key={memo.title}
-                  className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:border-slate-200 hover:bg-white"
-                >
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-slate-900">
-                      {memo.title}
-                    </h3>
-                    <span className="text-[11px] font-medium text-slate-500">
-                      {memo.time}
-                    </span>
-                  </div>
-                  <p className="text-sm text-slate-600">{memo.excerpt}</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {memo.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600"
-                      >
-                        #{tag}
+            {/* Memo Timeline */}
+            <div className="flex-1 space-y-3 overflow-y-auto">
+              {isSearching ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+                </div>
+              ) : memos.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-center text-sm text-slate-500">
+                  {user
+                    ? "아직 메모가 없습니다. 첫 메모를 작성해보세요!"
+                    : "로그인하여 메모를 시작하세요."}
+                </div>
+              ) : (
+                memos.map((memo) => (
+                  <article
+                    key={memo.id}
+                    className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:border-slate-200 hover:bg-white"
+                  >
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {memo.title}
+                      </h3>
+                      <span className="text-[11px] font-medium text-slate-500">
+                        {formatTimeAgo(memo.created_at)}
                       </span>
-                    ))}
-                  </div>
-                </article>
-              ))}
+                    </div>
+                    <p className="text-sm text-slate-600 line-clamp-2">
+                      {memo.content}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {memo.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  </article>
+                ))
+              )}
             </div>
 
+            {/* Memo Input Form */}
             <div className="mt-auto space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold text-slate-700">
-                  제안된 태그
+                  새 메모 작성
                 </div>
-                <button className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1 text-xs font-medium text-white">
-                  <Wand2 className="h-4 w-4" />
-                  자동 생성
-                </button>
+                {modelLoading && (
+                  <span className="text-xs text-slate-500">AI 로딩중...</span>
+                )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                {tagSuggestions.map((tag) => (
+
+              {/* Title Input */}
+              <input
+                type="text"
+                placeholder="제목 (선택사항, 비워두면 자동 생성)"
+                value={memoTitle}
+                onChange={(e) => setMemoTitle(e.target.value)}
+                disabled={!user}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.15)] disabled:bg-slate-100"
+              />
+
+              {/* Content Input */}
+              <textarea
+                rows={4}
+                placeholder="메모를 입력하면 자동으로 태그를 제안해드려요."
+                value={memoContent}
+                onChange={(e) => setMemoContent(e.target.value)}
+                disabled={!user}
+                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.15)] disabled:bg-slate-100"
+              />
+
+              {/* Tag Generation Button */}
+              <button
+                onClick={handleGenerateTags}
+                disabled={
+                  !user ||
+                  !memoContent.trim() ||
+                  isGeneratingTags ||
+                  modelLoading
+                }
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-800 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-700 disabled:bg-slate-300"
+              >
+                {isGeneratingTags ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    태그 생성 중...
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="h-4 w-4" />
+                    AI 태그 생성
+                  </>
+                )}
+              </button>
+
+              {/* Suggested Tags */}
+              {suggestedTags.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-slate-700">
+                    제안된 태그 (최대 3개 선택)
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {suggestedTags.map((tag) => (
+                      <button
+                        key={tag}
+                        onClick={() => handleTagClick(tag)}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          selectedTags.includes(tag)
+                            ? "border-slate-800 bg-slate-800 text-white"
+                            : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300"
+                        }`}
+                      >
+                        #{tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Selected Tags */}
+              {selectedTags.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-slate-700">
+                    선택된 태그
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-800 bg-slate-800 px-3 py-1 text-xs font-semibold text-white"
+                      >
+                        #{tag}
+                        <button
+                          onClick={() => handleRemoveTag(tag)}
+                          className="hover:text-slate-300"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Tag Input */}
+              {selectedTags.length < 3 && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="커스텀 태그 추가"
+                    value={customTag}
+                    onChange={(e) => setCustomTag(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleAddCustomTag();
+                      }
+                    }}
+                    disabled={!user}
+                    className="flex-1 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 outline-none transition focus:border-slate-400 disabled:bg-slate-100"
+                  />
                   <button
-                    key={tag}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-300"
+                    onClick={handleAddCustomTag}
+                    disabled={!user || !customTag.trim()}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-300 disabled:bg-slate-100 disabled:text-slate-400"
                   >
-                    #{tag}
+                    추가
                   </button>
-                ))}
-                <button className="rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs font-semibold text-slate-500 transition hover:border-slate-400 hover:text-slate-700">
-                  + 태그 추가
-                </button>
-              </div>
-              <div className="flex items-end gap-2">
-                <textarea
-                  rows={4}
-                  placeholder="메모를 입력하면 자동으로 태그를 제안해드려요."
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]"
-                />
-                <button className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-                  <Send className="h-4 w-4" />
-                </button>
-              </div>
+                </div>
+              )}
+
+              {/* Save Button */}
+              <button
+                onClick={handleSaveMemo}
+                disabled={!user || !memoContent.trim() || isSaving}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg disabled:bg-slate-300"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    저장 중...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4" />
+                    메모 저장
+                  </>
+                )}
+              </button>
             </div>
           </section>
 
+          {/* Center Section - Visualization */}
           <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-sm backdrop-blur">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -326,6 +656,7 @@ export default function Home() {
             </div>
           </section>
 
+          {/* Right Section - AI Insights */}
           <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
             <div className="flex items-center justify-between">
               <div>
@@ -381,9 +712,13 @@ export default function Home() {
                 <div className="flex items-end gap-2">
                   <input
                     placeholder="작성된 메모를 기반으로 AI와 대화하세요."
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]"
+                    disabled={!user}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.15)] disabled:bg-slate-100"
                   />
-                  <button className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+                  <button
+                    disabled={!user}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg disabled:bg-slate-300"
+                  >
                     <Send className="h-4 w-4" />
                   </button>
                 </div>
