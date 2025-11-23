@@ -1,5 +1,10 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 import {
   ChartPie,
+  LogOut,
   MessageCircle,
   Network,
   Search,
@@ -7,6 +12,8 @@ import {
   Sparkles,
   Wand2,
 } from "lucide-react";
+
+import { signInWithGoogle, signOut, getCurrentUser } from "@/lib/auth";
 
 const memoHistory = [
   {
@@ -53,6 +60,46 @@ const chatThread = [
 ];
 
 export default function Home() {
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // 페이지 로드 시 사용자 세션 확인
+    const checkUser = async () => {
+      try {
+        const currentUser = await getCurrentUser();
+        setUser(currentUser);
+      } catch (error) {
+        console.error("사용자 정보 가져오기 실패:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkUser();
+  }, []);
+
+  const handleGoogleLogin = async () => {
+    try {
+      await signInWithGoogle();
+      // signInWithGoogle은 자동으로 리다이렉트됨
+    } catch (error) {
+      console.error("로그인 실패:", error);
+      alert("로그인에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      setUser(null);
+      window.location.reload();
+    } catch (error) {
+      console.error("로그아웃 실패:", error);
+      alert("로그아웃에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] bg-[length:20px_20px]">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
@@ -68,10 +115,32 @@ export default function Home() {
               작성 → 태그 추천 → 시각화 → AI 제안까지 한 화면에서 확인하세요.
             </p>
           </div>
-          <button className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-            <Sparkles className="h-4 w-4 text-amber-500" />
-            구글로 시작하기
-          </button>
+          {!loading && (
+            <>
+              {user ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-slate-700">
+                    {user.email?.split("@")[0]}님 환영해요
+                  </span>
+                  <button
+                    onClick={handleSignOut}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    로그아웃
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleGoogleLogin}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <Sparkles className="h-4 w-4 text-amber-500" />
+                  구글로 시작하기
+                </button>
+              )}
+            </>
+          )}
         </header>
 
         <div className="grid min-h-[70vh] grid-cols-[320px_1fr_340px] gap-4">
