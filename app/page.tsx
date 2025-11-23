@@ -102,7 +102,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] bg-[length:20px_20px]">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
+      <div className="mx-auto flex flex-col gap-6 px-6 py-8">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
