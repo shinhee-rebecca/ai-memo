@@ -15,6 +15,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 import { signOut } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/client";
@@ -752,12 +753,20 @@ export function MainApp({ user }: MainAppProps) {
                               : "ml-auto bg-slate-900 text-white"
                           }`}
                         >
-                          {chat.message}
+                          {chat.role === "ai" ? (
+                            <div className="prose prose-sm max-w-none [&_p]:my-1 [&_strong]:font-semibold [&_strong]:text-slate-900 [&_ul]:my-1 [&_ul]:ml-4 [&_ul]:list-disc [&_ol]:my-1 [&_ol]:ml-4 [&_ol]:list-decimal [&_li]:my-0.5">
+                              <ReactMarkdown>{chat.message}</ReactMarkdown>
+                            </div>
+                          ) : (
+                            chat.message
+                          )}
                         </div>
                       ))}
                       {streamingMessage && (
                         <div className="max-w-[90%] self-start rounded-2xl bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm">
-                          {streamingMessage}
+                          <div className="prose prose-sm max-w-none [&_p]:my-1 [&_strong]:font-semibold [&_strong]:text-slate-900 [&_ul]:my-1 [&_ul]:ml-4 [&_ul]:list-disc [&_ol]:my-1 [&_ol]:ml-4 [&_ol]:list-decimal [&_li]:my-0.5">
+                            <ReactMarkdown>{streamingMessage}</ReactMarkdown>
+                          </div>
                         </div>
                       )}
                       {isSendingChat && !streamingMessage && (
