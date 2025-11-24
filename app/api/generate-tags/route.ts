@@ -96,8 +96,11 @@ function extractKeywordsFallback(
 }
 
 export async function POST(request: NextRequest) {
+  let content = "";
+
   try {
-    const { content } = await request.json();
+    const body = await request.json();
+    content = body.content;
 
     if (!content || typeof content !== "string") {
       return NextResponse.json(
@@ -113,25 +116,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ tags: extractKeywordsFallback(content, 3) });
     }
 
-    // Call OpenAI API to generate tags
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
+    // Call OpenAI API to generate tags with timeout
+    const response = await Promise.race([
+      openai.chat.completions.create(
         {
-          role: "system",
-          content:
-            "당신은 메모의 내용을 분석하여 적절한 태그를 생성하는 AI입니다. 메모의 핵심 키워드나 주제를 나타내는 태그 1-3개를 생성하세요. 각 태그는 한 단어로 간결하게 작성하며, 쉼표로 구분합니다. 예시: 업무, 아이디어, 회의",
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content:
+                "당신은 메모의 내용을 분석하여 적절한 태그를 생성하는 AI입니다. 메모의 핵심 키워드나 주제를 나타내는 태그 1-3개를 생성하세요. 각 태그는 한 단어로 간결하게 작성하며, 쉼표로 구분합니다. 예시: 업무, 아이디어, 회의",
+            },
+            {
+              role: "user",
+              content: `다음 메모에 적합한 태그 1-3개를 생성해주세요. 태그는 쉼표로 구분하여 응답하세요:\n\n${cleaned}`,
+            },
+          ],
+          temperature: 0.5,
+          max_tokens: 50,
         },
         {
-          role: "user",
-          content: `다음 메모에 적합한 태그 1-3개를 생성해주세요. 태그는 쉼표로 구분하여 응답하세요:\n\n${cleaned}`,
-        },
-      ],
-      temperature: 0.5,
-      max_tokens: 50,
-    });
+          timeout: 20000, // 20 second timeout
+        }
+      ),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Request timeout")), 25000)
+      ),
+    ]);
 
-    const generatedTags = response.choices[0]?.message?.content?.trim();
+    const generatedTags = (response as any).choices[0]?.message?.content?.trim();
 
     if (!generatedTags) {
       console.warn("OpenAI returned empty result, using fallback");
@@ -141,8 +154,8 @@ export async function POST(request: NextRequest) {
     // Parse tags from response (comma or space separated)
     const tags = generatedTags
       .split(/[,\s]+/)
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0)
+      .map((tag: string) => tag.trim())
+      .filter((tag: string) => tag.length > 0)
       .slice(0, 3);
 
     if (tags.length === 0) {
@@ -153,7 +166,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ tags });
   } catch (error) {
     console.error("Failed to generate tags with OpenAI:", error);
-    const { content } = await request.json();
-    return NextResponse.json({ tags: extractKeywordsFallback(content, 3) });
+    // Use the content variable that was already read
+    return NextResponse.json({
+      tags: content ? extractKeywordsFallback(content, 3) : ["메모"],
+    });
   }
 }
