@@ -1,17 +1,18 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   Background,
   Controls,
-  Edge,
-  Node,
   ReactFlow,
+  ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import type { Edge, Node } from "@xyflow/react";
 
 import { type Memo } from "@/lib/memo";
 
@@ -27,115 +28,198 @@ interface RelationshipViewProps {
   memos: Memo[];
 }
 
-export function RelationshipView({ memos }: RelationshipViewProps) {
-  const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
-    const tagMap = new Map<string, Memo[]>();
-    const nodes: Node[] = [];
-    const edges: Edge[] = [];
+export function RelationshipView(props: RelationshipViewProps) {
+  return (
+    <ReactFlowProvider>
+      <RelationshipGraph {...props} />
+    </ReactFlowProvider>
+  );
+}
 
-    // Group memos by tags
+function RelationshipGraph({ memos }: RelationshipViewProps) {
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node[]>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
+  const { fitView } = useReactFlow();
+
+  const tagStats = useMemo(() => {
+    const counts = new Map<string, number>();
+
     memos.forEach((memo) => {
       memo.tags.forEach((tag) => {
-        if (!tagMap.has(tag)) {
-          tagMap.set(tag, []);
-        }
-        tagMap.get(tag)!.push(memo);
+        counts.set(tag, (counts.get(tag) || 0) + 1);
       });
     });
 
-    // Create tag nodes (positioned in the center area)
-    const tagEntries = Array.from(tagMap.entries());
-    const tagCount = tagEntries.length;
-    const centerX = 400;
-    const centerY = 300;
-    const radius = Math.min(150, 50 + tagCount * 10);
+    return Array.from(counts.entries()).map(([tag, count]) => ({
+      tag,
+      count,
+    }));
+  }, [memos]);
 
-    tagEntries.forEach(([tag, tagMemos], index) => {
-      const angle = (index / tagCount) * 2 * Math.PI;
-      const x = centerX + radius * Math.cos(angle);
-      const y = centerY + radius * Math.sin(angle);
+  useEffect(() => {
+    if (selectedTag && !tagStats.some((tag) => tag.tag === selectedTag)) {
+      setSelectedTag(null);
+    }
+  }, [selectedTag, tagStats]);
 
-      nodes.push({
-        id: `tag-${tag}`,
+  const tagNodes = useMemo<Node[]>(() => {
+    if (tagStats.length === 0) return [];
+
+    const radius = 220;
+    const angleStep = (2 * Math.PI) / tagStats.length;
+
+    return tagStats.map((tag, index) => {
+      const angle = angleStep * index - Math.PI / 2;
+      return {
+        id: `tag-${tag.tag}`,
         type: "tag",
-        position: { x, y },
-        data: { label: tag, memoCount: tagMemos.length },
-      });
+        data: { label: tag.tag, memoCount: tag.count },
+        position: {
+          x: Math.cos(angle) * radius,
+          y: Math.sin(angle) * radius,
+        },
+      } satisfies Node;
     });
+  }, [tagStats]);
 
-    // Create memo nodes (positioned around their tags)
-    const memoPositions = new Map<string, { x: number; y: number }>();
+  useEffect(() => {
+    if (tagNodes.length === 0) {
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
 
-    memos.forEach((memo) => {
-      if (memo.tags.length === 0) return;
+    if (!selectedTag) {
+      setEdges([]);
+      setNodes(
+        tagNodes.map((node) => ({
+          ...node,
+          data: { ...node.data, selected: false },
+        }))
+      );
+      return;
+    }
 
-      // Calculate average position based on connected tags
-      let avgX = 0;
-      let avgY = 0;
-      memo.tags.forEach((tag) => {
-        const tagNode = nodes.find((n) => n.id === `tag-${tag}`);
-        if (tagNode) {
-          avgX += tagNode.position.x;
-          avgY += tagNode.position.y;
-        }
-      });
-      avgX /= memo.tags.length;
-      avgY /= memo.tags.length;
+    const selectedNode = tagNodes.find(
+      (node) => node.id === `tag-${selectedTag}`
+    );
 
-      // Add some random offset to avoid overlapping
-      const offsetRadius = 80 + Math.random() * 40;
-      const offsetAngle = Math.random() * 2 * Math.PI;
-      const x = avgX + offsetRadius * Math.cos(offsetAngle);
-      const y = avgY + offsetRadius * Math.sin(offsetAngle);
+    if (!selectedNode) {
+      setSelectedTag(null);
+      return;
+    }
 
-      memoPositions.set(memo.id, { x, y });
+    const relatedMemos = memos.filter((memo) =>
+      memo.tags.includes(selectedTag)
+    );
 
-      nodes.push({
+    const memoRingRadius = 140;
+    const memoNodes: Node[] = relatedMemos.map((memo, index) => {
+      const angle =
+        (index / Math.max(relatedMemos.length, 1)) * 2 * Math.PI -
+        Math.PI / 2;
+
+      return {
         id: `memo-${memo.id}`,
         type: "memo",
-        position: { x, y },
         data: {
           title: memo.title,
           content: memo.content,
           tags: memo.tags,
         },
-      });
-
-      // Create edges between memo and its tags
-      memo.tags.forEach((tag) => {
-        edges.push({
-          id: `edge-${memo.id}-${tag}`,
-          source: `memo-${memo.id}`,
-          target: `tag-${tag}`,
-          type: "smoothstep",
-          animated: false,
-          style: { stroke: "#cbd5e1", strokeWidth: 1.5 },
-        });
-      });
+        position: {
+          x: selectedNode.position.x + Math.cos(angle) * memoRingRadius,
+          y: selectedNode.position.y + Math.sin(angle) * memoRingRadius,
+        },
+      };
     });
 
-    return { nodes, edges };
-  }, [memos]);
+    const memoEdges: Edge[] = relatedMemos.map((memo) => ({
+      id: `edge-${selectedTag}-${memo.id}`,
+      source: `tag-${selectedTag}`,
+      target: `memo-${memo.id}`,
+      animated: true,
+      type: "smoothstep",
+      style: { stroke: "#f59e0b" },
+    }));
 
-  const [nodes, , onNodesChange] = useNodesState(initialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+    const tagNodesWithSelection = tagNodes.map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        selected: node.id === `tag-${selectedTag}`,
+      },
+    }));
+
+    setNodes([...tagNodesWithSelection, ...memoNodes]);
+    setEdges(memoEdges);
+  }, [memos, selectedTag, setEdges, setNodes, tagNodes]);
+
+  useEffect(() => {
+    if (nodes.length === 0) return;
+
+    const timeout = setTimeout(() => {
+      fitView({ padding: 0.2 });
+    }, 50);
+
+    return () => clearTimeout(timeout);
+  }, [fitView, nodes]);
+
+  const handleNodeClick = useCallback(
+    (_: unknown, node: Node) => {
+      if (node.type !== "tag") return;
+      const tag = (node.data as { label?: string }).label;
+      if (!tag) return;
+
+      setSelectedTag((prev) => (prev === tag ? null : tag));
+    },
+    []
+  );
+
+  if (tagStats.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-center text-sm text-slate-500">
+          아직 메모가 없습니다. 메모를 작성하면 태그 기반 관계도를 보여드릴게요.
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full w-full">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        nodeTypes={nodeTypes}
-        fitView
-        minZoom={0.5}
-        maxZoom={1.5}
-        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-      >
-        <Background color="#e2e8f0" gap={16} size={1} />
-        <Controls className="rounded-lg border border-slate-200 bg-white shadow-sm" />
-      </ReactFlow>
+    <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-inner">
+      <div className="flex items-center justify-between px-4 py-3 text-sm text-slate-600">
+        <span className="font-semibold text-slate-800">
+          태그를 선택하면 연결된 메모가 나타나요.
+        </span>
+        {selectedTag && (
+          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+            #{selectedTag} 선택됨
+          </span>
+        )}
+      </div>
+
+      <div className="relative flex-1">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          nodeTypes={nodeTypes}
+          onNodeClick={handleNodeClick}
+          nodesDraggable={false}
+          elementsSelectable={false}
+          panOnScroll
+          zoomOnScroll
+          fitView
+          fitViewOptions={{ padding: 0.3 }}
+          className="h-full"
+        >
+          <Background gap={24} color="#e2e8f0" />
+          <Controls showInteractive={false} position="bottom-right" />
+        </ReactFlow>
+      </div>
     </div>
   );
 }

@@ -498,13 +498,17 @@ export function MainApp({ user }: MainAppProps) {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  시각화
+                  {viewMode === "relationship" ? "Relational" : "Graph"}
                 </p>
                 <h2 className="text-xl font-semibold text-slate-900">
-                  관계형 / 그래프 보기
+                  {viewMode === "relationship"
+                    ? "관계형 보기"
+                    : "그래프 보기"}
                 </h2>
                 <p className="text-sm text-slate-600">
-                  선택에 따라 메모를 시각화해요. 노드에 마우스를 올려 상세를 확인하세요.
+                  {viewMode === "relationship"
+                    ? "관계에 따라 메모를 시각화해요. 노드에 마우스를 올려 상세를 확인하세요."
+                    : "태그의 빈도에 따라 메모를 시각화해요. 그래프에 마우스를 올려 상세를 확인하세요."}
                 </p>
               </div>
               <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 p-1 shadow-inner">
