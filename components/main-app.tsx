@@ -8,6 +8,7 @@ import {
   LogOut,
   MessageCircle,
   Network,
+  RefreshCw,
   Search,
   Send,
   Sparkles,
@@ -28,26 +29,15 @@ import { generateTitle } from "@/lib/ai/title-generator";
 import { RelationshipView } from "@/components/relationship-view";
 import { ChartView } from "@/components/chart-view";
 
-const insights = [
-  {
-    title: "다음 할 일",
-    body: "회의 메모 기반으로 오늘 처리하면 좋은 3가지 행동을 추천했어요.",
-  },
-  {
-    title: "패턴 스팟",
-    body: "최근 2주간 '아이디어' 태그가 가장 많이 사용됐어요.",
-  },
-  {
-    title: "요약 카드",
-    body: "방금 저장한 메모를 1줄 요약으로 묶어둘까요?",
-  },
-];
+interface Suggestion {
+  title: string;
+  body: string;
+}
 
-const chatThread = [
-  { role: "ai", message: "어떤 메모를 더 확장할까요? 태그를 추천할 수도 있어요." },
-  { role: "user", message: "출시 체크리스트만 빠르게 정리해줘." },
-  { role: "ai", message: "기획 ✅, QA 진행 중, 출시일 확정 필요. 태그: 업무, 출시" },
-];
+interface ChatMessage {
+  role: "user" | "ai";
+  message: string;
+}
 
 function formatTimeAgo(dateString: string): string {
   const date = new Date(dateString);
@@ -83,6 +73,16 @@ export function MainApp({ user }: MainAppProps) {
   const [viewMode, setViewMode] = useState<"relationship" | "chart">(
     "relationship"
   );
+
+  // AI Suggestions state
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+
+  // Chat state
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const [streamingMessage, setStreamingMessage] = useState("");
 
   useEffect(() => {
     if (user?.email) {
@@ -211,6 +211,9 @@ export function MainApp({ user }: MainAppProps) {
       // Reload memos
       await loadMemos(user.email);
 
+      // Generate new AI suggestions after saving memo
+      handleGenerateSuggestions();
+
       alert("메모가 저장되었습니다!");
     } catch (error) {
       console.error("Failed to save memo:", error);
@@ -245,6 +248,114 @@ export function MainApp({ user }: MainAppProps) {
     }
   };
 
+  const handleGenerateSuggestions = async () => {
+    setIsLoadingSuggestions(true);
+    try {
+      const response = await fetch("/api/generate-suggestions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ memos }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate suggestions");
+      }
+
+      const data = await response.json();
+      setSuggestions(data.suggestions || []);
+    } catch (error) {
+      console.error("Failed to generate suggestions:", error);
+      setSuggestions([
+        {
+          title: "오류 발생",
+          body: "제안 생성에 실패했습니다. 다시 시도해주세요.",
+        },
+      ]);
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  };
+
+  const handleSendChat = async () => {
+    if (!chatInput.trim() || isSendingChat) {
+      return;
+    }
+
+    const userMessage = chatInput.trim();
+    setChatInput("");
+
+    // Add user message to chat history
+    const newChatHistory: ChatMessage[] = [
+      ...chatHistory,
+      { role: "user", message: userMessage },
+    ];
+    setChatHistory(newChatHistory);
+
+    setIsSendingChat(true);
+    setStreamingMessage("");
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: userMessage,
+          memos,
+          chatHistory,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send chat message");
+      }
+
+      // Read streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      let fullMessage = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        const chunk = decoder.decode(value);
+        fullMessage += chunk;
+        setStreamingMessage(fullMessage);
+      }
+
+      // Add AI message to chat history
+      setChatHistory([
+        ...newChatHistory,
+        { role: "ai", message: fullMessage },
+      ]);
+      setStreamingMessage("");
+    } catch (error) {
+      console.error("Failed to send chat:", error);
+      // Add error message
+      setChatHistory([
+        ...newChatHistory,
+        {
+          role: "ai",
+          message: "죄송합니다. 메시지 전송에 실패했습니다. 다시 시도해주세요.",
+        },
+      ]);
+    } finally {
+      setIsSendingChat(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] bg-[length:20px_20px]">
       <div className="mx-auto flex flex-col gap-6 px-6 py-8">
@@ -274,7 +385,7 @@ export function MainApp({ user }: MainAppProps) {
           </div>
         </header>
 
-        <div className="grid min-h-[70vh] grid-cols-[320px_1fr_340px] gap-4">
+        <div className="grid min-h-[70vh] grid-cols-[1fr_2fr_1fr] gap-4">
           {/* Left Section - Memo Input */}
           <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
             <div className="flex items-center justify-between gap-3">
@@ -557,24 +668,41 @@ export function MainApp({ user }: MainAppProps) {
                   바로 실행 가능한 인사이트
                 </h2>
               </div>
-              <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                베타
-              </div>
+              <button
+                onClick={handleGenerateSuggestions}
+                disabled={isLoadingSuggestions || memos.length === 0}
+                className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+              >
+                <RefreshCw
+                  className={`h-3 w-3 ${isLoadingSuggestions ? "animate-spin" : ""}`}
+                />
+                {isLoadingSuggestions ? "생성 중" : "새로고침"}
+              </button>
             </div>
 
             <div className="space-y-3">
-              {insights.map((card) => (
-                <div
-                  key={card.title}
-                  className="rounded-xl border border-slate-100 bg-gradient-to-br from-white to-slate-50 px-4 py-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-slate-200"
-                >
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                    <Sparkles className="h-4 w-4 text-amber-500" />
-                    {card.title}
-                  </div>
-                  <p className="text-sm text-slate-600">{card.body}</p>
+              {isLoadingSuggestions ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
                 </div>
-              ))}
+              ) : suggestions.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-center text-sm text-slate-500">
+                  새로고침 버튼을 눌러 AI 제안을 받아보세요!
+                </div>
+              ) : (
+                suggestions.map((card, index) => (
+                  <div
+                    key={index}
+                    className="rounded-xl border border-slate-100 bg-gradient-to-br from-white to-slate-50 px-4 py-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-slate-200"
+                  >
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                      <Sparkles className="h-4 w-4 text-amber-500" />
+                      {card.title}
+                    </div>
+                    <p className="text-sm text-slate-600">{card.body}</p>
+                  </div>
+                ))
+              )}
             </div>
 
             <div className="flex flex-1 flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50/60 p-4">
@@ -586,25 +714,59 @@ export function MainApp({ user }: MainAppProps) {
               </div>
               <div className="flex flex-1 flex-col gap-2 overflow-hidden">
                 <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-                  {chatThread.map((chat, index) => (
-                    <div
-                      key={index}
-                      className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
-                        chat.role === "ai"
-                          ? "self-start bg-white text-slate-800 shadow-sm"
-                          : "self-end bg-slate-900 text-white"
-                      }`}
-                    >
-                      {chat.message}
+                  {chatHistory.length === 0 && !streamingMessage ? (
+                    <div className="flex h-full items-center justify-center text-center text-sm text-slate-400">
+                      메모를 기반으로 AI와 대화해보세요
                     </div>
-                  ))}
+                  ) : (
+                    <>
+                      {chatHistory.map((chat, index) => (
+                        <div
+                          key={index}
+                          className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                            chat.role === "ai"
+                              ? "self-start bg-white text-slate-800 shadow-sm"
+                              : "ml-auto bg-slate-900 text-white"
+                          }`}
+                        >
+                          {chat.message}
+                        </div>
+                      ))}
+                      {streamingMessage && (
+                        <div className="max-w-[90%] self-start rounded-2xl bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm">
+                          {streamingMessage}
+                        </div>
+                      )}
+                      {isSendingChat && !streamingMessage && (
+                        <div className="flex items-center gap-2 text-sm text-slate-400">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          AI가 생각하는 중...
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
                 <div className="flex items-end gap-2">
                   <input
                     placeholder="작성된 메모를 기반으로 AI와 대화하세요."
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendChat();
+                      }
+                    }}
+                    disabled={isSendingChat || memos.length === 0}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.15)] disabled:bg-slate-50 disabled:text-slate-400"
                   />
-                  <button className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+                  <button
+                    onClick={handleSendChat}
+                    disabled={
+                      !chatInput.trim() || isSendingChat || memos.length === 0
+                    }
+                    className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg disabled:bg-slate-300"
+                  >
                     <Send className="h-4 w-4" />
                   </button>
                 </div>

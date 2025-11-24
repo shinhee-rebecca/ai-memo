@@ -14,8 +14,9 @@ The app automatically generates 1-3 tags for each memo based on content, visuali
 - **UI**: shadcn/ui (New York style) with Tailwind CSS 4
 - **Language**: TypeScript (strict mode)
 - **Package Manager**: pnpm
-- **Database**: Supabase (PostgreSQL) - planned
-- **Auth**: Google login - planned
+- **Database**: Supabase (PostgreSQL)
+- **Auth**: Google login
+- **AI**: OpenAI API (gpt-4o-mini)
 - **Icons**: Lucide React
 
 ## Development Commands
@@ -65,8 +66,10 @@ The main page ([app/page.tsx](app/page.tsx)) implements a 3-column grid layout:
    - Tag frequency statistics (last 30 days)
 
 3. **Right Section (340px)**: AI Insights
-   - AI-generated suggestions based on memo patterns
-   - Chat interface for memo-based conversations
+   - AI-generated suggestions based on memo patterns (analyzes last 100 memos)
+   - Suggestions auto-generate when saving new memos or via refresh button
+   - Chat interface for memo-based conversations with streaming responses
+   - Chat references memo content, tags, and timestamps
 
 ### Import Order
 
@@ -106,6 +109,31 @@ shadcn/ui specific aliases:
 - **Linting**: ESLint with Next.js config
 - **Font Loading**: Using next/font with Geist Sans and Geist Mono
 
+## Environment Variables
+
+Required environment variables in `.env.local`:
+
+```bash
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# Google OAuth
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+
+# OpenAI API (for AI suggestions and chat)
+OPENAI_API_KEY=your_openai_api_key
+```
+
 ## Current State
 
-The project has initial UI implementation with static data. Backend integration with Supabase and Google authentication is planned but not yet implemented. The [app/page.tsx](app/page.tsx) file contains mock data (`memoHistory`, `insights`, `chatThread`) that should be replaced with real data once backend is connected.
+The project has a fully functional implementation with:
+- Supabase database integration for memo storage
+- Google authentication for user login
+- AI-powered features:
+  - Automatic tag generation using local Transformers.js model
+  - Title generation using OpenAI API
+  - AI suggestions based on memo patterns (last 100 memos)
+  - Real-time chat with streaming responses referencing memo data

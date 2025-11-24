@@ -38,8 +38,8 @@ export function RelationshipView(props: RelationshipViewProps) {
 
 function RelationshipGraph({ memos }: RelationshipViewProps) {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node[]>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const { fitView } = useReactFlow();
 
   const tagStats = useMemo(() => {
