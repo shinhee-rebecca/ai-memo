@@ -8,6 +8,9 @@ import { getCurrentUser } from "@/lib/auth";
 import { LandingPage } from "@/components/landing-page";
 import { MainApp } from "@/components/main-app";
 
+// Force dynamic rendering to avoid prerendering issues with Transformers.js
+export const dynamic = "force-dynamic";
+
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);

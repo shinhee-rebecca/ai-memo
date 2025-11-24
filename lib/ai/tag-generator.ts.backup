@@ -1,0 +1,331 @@
+// Client-side only - uses dynamic imports to avoid SSR issues
+type FeatureExtractionPipeline = any;
+type SummarizationPipeline = any;
+
+let embeddingModel: FeatureExtractionPipeline | null = null;
+let summaryModel: SummarizationPipeline | null = null;
+let isLoadingEmbedding = false;
+let isLoadingSummary = false;
+let transformersCache: any = null;
+
+/**
+ * Dynamically import transformers.js (client-side only)
+ */
+async function getTransformers() {
+  if (typeof window === "undefined") {
+    throw new Error("Transformers.js can only be used in the browser");
+  }
+
+  // Return cached version if available
+  if (transformersCache) {
+    return transformersCache;
+  }
+
+  try {
+    // Import using default export approach
+    const module = await import("@xenova/transformers");
+
+    // Handle both named and default exports
+    const pipeline = module.pipeline || (module as any).default?.pipeline;
+    const env = module.env || (module as any).default?.env;
+
+    if (!pipeline) {
+      throw new Error("Failed to import pipeline from @xenova/transformers");
+    }
+
+    // Disable local model loading - use CDN
+    if (env) {
+      env.allowLocalModels = false;
+      env.useBrowserCache = true;
+    }
+
+    transformersCache = { pipeline, env };
+    return transformersCache;
+  } catch (error) {
+    console.error("Error importing transformers:", error);
+    throw error;
+  }
+}
+
+/**
+ * Load the multilingual embedding model for tag extraction
+ * Using multilingual-e5-small for Korean support and reasonable size
+ */
+export async function loadEmbeddingModel(): Promise<void> {
+  if (embeddingModel || isLoadingEmbedding) return;
+
+  isLoadingEmbedding = true;
+  try {
+    console.log("Loading multilingual embedding model...");
+    const transformers = await getTransformers();
+    // Using multilingual-e5-small: good Korean support, ~120MB
+    embeddingModel = (await transformers.pipeline(
+      "feature-extraction",
+      "Xenova/multilingual-e5-small"
+    )) as FeatureExtractionPipeline;
+    console.log("Embedding model loaded successfully");
+  } catch (error) {
+    console.error("Failed to load embedding model:", error);
+    throw error;
+  } finally {
+    isLoadingEmbedding = false;
+  }
+}
+
+/**
+ * Load the Korean summarization model for title generation
+ * Using mT5 for Korean text summarization
+ */
+export async function loadSummaryModel(): Promise<void> {
+  if (summaryModel || isLoadingSummary) return;
+
+  isLoadingSummary = true;
+  try {
+    console.log("Loading Korean summarization model...");
+    const transformers = await getTransformers();
+    // Using mT5-small for Korean summarization: ~300MB but good quality
+    summaryModel = (await transformers.pipeline(
+      "summarization",
+      "Xenova/mt5-small"
+    )) as SummarizationPipeline;
+    console.log("Summary model loaded successfully");
+  } catch (error) {
+    console.error("Failed to load summary model:", error);
+    throw error;
+  } finally {
+    isLoadingSummary = false;
+  }
+}
+
+/**
+ * Load all models - call this on app initialization
+ */
+export async function loadModel(): Promise<void> {
+  // Load embedding model (required for tags)
+  await loadEmbeddingModel();
+  // Summary model will be loaded on-demand for title generation
+}
+
+/**
+ * Check if models are loaded
+ */
+export function isModelLoaded(): boolean {
+  return embeddingModel !== null;
+}
+
+/**
+ * Preprocess Korean text for better tag extraction
+ */
+function preprocessText(text: string): string {
+  // Remove special characters except Korean, English, numbers, and spaces
+  const cleaned = text.replace(/[^\uAC00-\uD7A3a-zA-Z0-9\s]/g, " ");
+  // Normalize whitespace
+  return cleaned.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Extract keywords from text using simple frequency analysis
+ */
+function extractKeywords(text: string, maxKeywords: number = 10): string[] {
+  const processed = preprocessText(text);
+  const words = processed.split(/\s+/);
+
+  // Filter out common Korean stop words and short words
+  const stopWords = new Set([
+    "그",
+    "이",
+    "저",
+    "것",
+    "수",
+    "등",
+    "들",
+    "및",
+    "좀",
+    "더",
+    "잘",
+    "안",
+    "또",
+    "한",
+    "와",
+    "과",
+    "의",
+    "가",
+    "을",
+    "를",
+    "에",
+    "에서",
+    "로",
+    "으로",
+    "는",
+    "은",
+    "이",
+    "가",
+    "께서",
+    "도",
+    "만",
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "but",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+  ]);
+
+  const filtered = words.filter(
+    (word) => word.length >= 2 && !stopWords.has(word)
+  );
+
+  // Count word frequency
+  const frequency = new Map<string, number>();
+  filtered.forEach((word) => {
+    frequency.set(word, (frequency.get(word) || 0) + 1);
+  });
+
+  // Sort by frequency and get top keywords
+  const sorted = Array.from(frequency.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxKeywords)
+    .map(([word]) => word);
+
+  return sorted;
+}
+
+/**
+ * Calculate cosine similarity between two vectors
+ */
+function cosineSimilarity(vecA: number[], vecB: number[]): number {
+  const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
+  const magnitudeA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
+  const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
+  return dotProduct / (magnitudeA * magnitudeB);
+}
+
+/**
+ * Generate 1-3 tags based on memo content using KeyBERT-style approach with Transformers.js
+ */
+export async function generateTags(content: string): Promise<string[]> {
+  try {
+    if (!embeddingModel) {
+      await loadEmbeddingModel();
+    }
+
+    if (!embeddingModel) {
+      throw new Error("Embedding model is not loaded");
+    }
+
+    // Extract candidate keywords
+    const keywords = extractKeywords(content, 10);
+
+    if (keywords.length === 0) {
+      // Fallback: use first few words
+      const words = preprocessText(content).split(/\s+/).slice(0, 3);
+      return words.slice(0, Math.min(3, words.length));
+    }
+
+    // If we have 3 or fewer keywords, return them directly
+    if (keywords.length <= 3) {
+      return keywords;
+    }
+
+    // Use semantic similarity to select the most relevant tags (KeyBERT style)
+    try {
+      // Embed the full content
+      const contentOutput = await embeddingModel(content, {
+        pooling: "mean",
+        normalize: true,
+      });
+      const contentVector = Array.from(contentOutput.data) as number[];
+
+      // Embed each keyword and calculate similarity
+      const similarities = await Promise.all(
+        keywords.map(async (keyword) => {
+          const keywordOutput = await embeddingModel!(keyword, {
+            pooling: "mean",
+            normalize: true,
+          });
+          const keywordVector = Array.from(keywordOutput.data) as number[];
+          const similarity = cosineSimilarity(contentVector, keywordVector);
+          return { keyword, similarity };
+        })
+      );
+
+      // Sort by similarity and take top 3
+      const topTags = similarities
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 3)
+        .map((item) => item.keyword);
+
+      return topTags;
+    } catch (embedError) {
+      console.warn(
+        "Semantic analysis failed, using keyword extraction:",
+        embedError
+      );
+      return keywords.slice(0, 3);
+    }
+  } catch (error) {
+    console.error("Failed to generate tags:", error);
+    // Fallback: return simple keyword extraction
+    return extractKeywords(content, 3);
+  }
+}
+
+/**
+ * Generate a title from memo content using Korean summarization model
+ */
+export async function generateTitle(content: string): Promise<string> {
+  // Clean the content first
+  const cleaned = preprocessText(content);
+
+  // For very short content, just return the first sentence
+  if (cleaned.length < 50) {
+    return cleaned;
+  }
+
+  try {
+    // Load summary model on-demand
+    if (!summaryModel) {
+      await loadSummaryModel();
+    }
+
+    if (summaryModel) {
+      // Generate summary for title
+      const result = await summaryModel(content, {
+        max_length: 30,
+        min_length: 10,
+        do_sample: false,
+      });
+
+      // Handle different result formats
+      if (result) {
+        // Check if it's an array or single object
+        const output = Array.isArray(result) ? result[0] : result;
+        if (output && typeof output === "object" && "summary_text" in output) {
+          return output.summary_text.trim();
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("Summarization failed, using fallback method:", error);
+  }
+
+  // Fallback: Try to extract first sentence (up to 50 characters)
+  const firstLine = cleaned.split(/[.\n!?]/)[0].trim();
+
+  if (firstLine.length > 0 && firstLine.length <= 50) {
+    return firstLine;
+  }
+
+  // If first sentence is too long, take first 30 characters and add ellipsis
+  if (firstLine.length > 50) {
+    return firstLine.substring(0, 30) + "...";
+  }
+
+  // Final fallback: use first 30 characters of content
+  return cleaned.substring(0, 30) + (cleaned.length > 30 ? "..." : "");
+}

@@ -23,12 +23,8 @@ import {
   searchMemos as searchMemosAPI,
   type Memo,
 } from "@/lib/memo";
-import {
-  generateTags,
-  generateTitle,
-  loadModel,
-  isModelLoaded,
-} from "@/lib/ai/tag-generator";
+import { generateTags, isModelLoaded } from "@/lib/ai/tag-generator";
+import { generateTitle } from "@/lib/ai/title-generator";
 import { RelationshipView } from "@/components/relationship-view";
 import { ChartView } from "@/components/chart-view";
 
@@ -82,28 +78,11 @@ export function MainApp({ user }: MainAppProps) {
   const [customTag, setCustomTag] = useState("");
   const [isGeneratingTags, setIsGeneratingTags] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [modelLoading, setModelLoading] = useState(true);
 
   // Visualization toggle state
   const [viewMode, setViewMode] = useState<"relationship" | "chart">(
     "relationship"
   );
-
-  useEffect(() => {
-    // Load TensorFlow model on app start
-    const initModel = async () => {
-      try {
-        await loadModel();
-        console.log("Model loaded successfully");
-      } catch (error) {
-        console.error("Failed to load model:", error);
-      } finally {
-        setModelLoading(false);
-      }
-    };
-
-    initModel();
-  }, []);
 
   useEffect(() => {
     if (user?.email) {
@@ -380,9 +359,6 @@ export function MainApp({ user }: MainAppProps) {
                 <div className="text-sm font-semibold text-slate-700">
                   새 메모 작성
                 </div>
-                {modelLoading && (
-                  <span className="text-xs text-slate-500">AI 로딩중...</span>
-                )}
               </div>
 
               {/* Title Input */}
@@ -406,9 +382,7 @@ export function MainApp({ user }: MainAppProps) {
               {/* Tag Generation Button */}
               <button
                 onClick={handleGenerateTags}
-                disabled={
-                  !memoContent.trim() || isGeneratingTags || modelLoading
-                }
+                disabled={!memoContent.trim() || isGeneratingTags}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-800 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-700 disabled:bg-slate-300"
               >
                 {isGeneratingTags ? (
