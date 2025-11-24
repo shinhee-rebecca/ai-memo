@@ -357,9 +357,9 @@ export function MainApp({ user }: MainAppProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] bg-[length:20px_20px]">
-      <div className="mx-auto flex flex-col gap-6 px-6 py-8">
-        <header className="flex flex-wrap items-start justify-between gap-4">
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] bg-[length:20px_20px] py-8">
+      <div className="mx-auto flex h-[1000px] flex-col gap-6 px-6">
+        <header className="flex flex-shrink-0 flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
               AI Memo Lab
@@ -385,9 +385,9 @@ export function MainApp({ user }: MainAppProps) {
           </div>
         </header>
 
-        <div className="grid min-h-[70vh] grid-cols-[1fr_2fr_1fr] gap-4">
+        <div className="grid flex-1 grid-cols-[1fr_2fr_1fr] gap-4 overflow-hidden">
           {/* Left Section - Memo Input */}
-          <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
+          <section className="flex flex-col gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -423,7 +423,7 @@ export function MainApp({ user }: MainAppProps) {
             </div>
 
             {/* Memo Timeline */}
-            <div className="flex-1 space-y-3 overflow-y-auto">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
               {isSearching ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
@@ -465,7 +465,7 @@ export function MainApp({ user }: MainAppProps) {
             </div>
 
             {/* Memo Input Form */}
-            <div className="mt-auto space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4">
+            <div className="flex-shrink-0 space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold text-slate-700">
                   새 메모 작성
@@ -658,7 +658,7 @@ export function MainApp({ user }: MainAppProps) {
           </section>
 
           {/* Right Section - AI Insights */}
-          <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
+          <section className="flex flex-col gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -680,7 +680,7 @@ export function MainApp({ user }: MainAppProps) {
               </button>
             </div>
 
-            <div className="space-y-3">
+            <div className="flex-shrink-0 space-y-3">
               {isLoadingSuggestions ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
@@ -705,15 +705,15 @@ export function MainApp({ user }: MainAppProps) {
               )}
             </div>
 
-            <div className="flex flex-1 flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50/60 p-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold text-slate-800">
                   AI 대화
                 </div>
                 <MessageCircle className="h-4 w-4 text-slate-500" />
               </div>
-              <div className="flex flex-1 flex-col gap-2 overflow-hidden">
-                <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                   {chatHistory.length === 0 && !streamingMessage ? (
                     <div className="flex h-full items-center justify-center text-center text-sm text-slate-400">
                       메모를 기반으로 AI와 대화해보세요
@@ -746,7 +746,7 @@ export function MainApp({ user }: MainAppProps) {
                     </>
                   )}
                 </div>
-                <div className="flex items-end gap-2">
+                <div className="flex flex-shrink-0 items-end gap-2">
                   <input
                     placeholder="작성된 메모를 기반으로 AI와 대화하세요."
                     value={chatInput}
