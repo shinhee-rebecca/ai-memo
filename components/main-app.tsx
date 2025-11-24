@@ -12,6 +12,7 @@ import {
   Search,
   Send,
   Sparkles,
+  Trash2,
   Wand2,
   X,
 } from "lucide-react";
@@ -27,6 +28,16 @@ import {
 } from "@/lib/memo";
 import { generateTags, isModelLoaded } from "@/lib/ai/tag-generator";
 import { generateTitle } from "@/lib/ai/title-generator";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { RelationshipView } from "@/components/relationship-view";
 import { ChartView } from "@/components/chart-view";
 
@@ -85,6 +96,10 @@ export function MainApp({ user }: MainAppProps) {
   const [chatInput, setChatInput] = useState("");
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState("");
+
+  // Delete memo state
+  const [memoToDelete, setMemoToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (user?.email) {
@@ -373,6 +388,40 @@ export function MainApp({ user }: MainAppProps) {
     }
   };
 
+  const handleDeleteMemo = async () => {
+    if (!memoToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch("/api/delete-memo", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ memoId: memoToDelete }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete memo");
+      }
+
+      // Reload memos
+      if (user?.email) {
+        await loadMemos(user.email);
+      }
+
+      // Regenerate AI suggestions after deletion
+      handleGenerateSuggestions();
+
+      setMemoToDelete(null);
+    } catch (error) {
+      console.error("Failed to delete memo:", error);
+      alert("메모 삭제에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] bg-[length:20px_20px] py-8">
       <div className="mx-auto flex h-[1000px] flex-col gap-6 px-6">
@@ -450,7 +499,7 @@ export function MainApp({ user }: MainAppProps) {
                 [...memos].reverse().map((memo) => (
                   <article
                     key={memo.id}
-                    className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:border-slate-200 hover:bg-white"
+                    className="group relative rounded-xl border border-slate-100 bg-slate-50/80 p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:border-slate-200 hover:bg-white"
                   >
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-semibold text-slate-900">
@@ -463,15 +512,24 @@ export function MainApp({ user }: MainAppProps) {
                     <p className="text-sm text-slate-600 line-clamp-2">
                       {memo.content}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {memo.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
+                    <div className="mt-2 flex items-end justify-between">
+                      <div className="flex flex-wrap gap-1.5">
+                        {memo.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => setMemoToDelete(memo.id)}
+                        className="opacity-0 transition hover:text-red-600 group-hover:opacity-100"
+                        aria-label="메모 삭제"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   </article>
                 ))
@@ -807,6 +865,28 @@ export function MainApp({ user }: MainAppProps) {
           </section>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!memoToDelete} onOpenChange={() => setMemoToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>메모를 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription>
+              이 작업은 되돌릴 수 없습니다. 메모가 영구적으로 삭제됩니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteMemo}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? "삭제 중..." : "삭제"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
