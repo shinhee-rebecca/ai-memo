@@ -29,6 +29,8 @@ import {
   loadModel,
   isModelLoaded,
 } from "@/lib/ai/tag-generator";
+import { RelationshipView } from "@/components/relationship-view";
+import { ChartView } from "@/components/chart-view";
 
 const insights = [
   {
@@ -81,6 +83,11 @@ export function MainApp({ user }: MainAppProps) {
   const [isGeneratingTags, setIsGeneratingTags] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [modelLoading, setModelLoading] = useState(true);
+
+  // Visualization toggle state
+  const [viewMode, setViewMode] = useState<"relationship" | "chart">(
+    "relationship"
+  );
 
   useEffect(() => {
     // Load TensorFlow model on app start
@@ -527,86 +534,37 @@ export function MainApp({ user }: MainAppProps) {
                 </p>
               </div>
               <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 p-1 shadow-inner">
-                <button className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm transition">
+                <button
+                  onClick={() => setViewMode("relationship")}
+                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    viewMode === "relationship"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
                   <Network className="h-4 w-4" />
                   관계형
                 </button>
-                <button className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-slate-600 transition hover:text-slate-900">
+                <button
+                  onClick={() => setViewMode("chart")}
+                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    viewMode === "chart"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
                   <ChartPie className="h-4 w-4" />
                   그래프
                 </button>
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-[minmax(0,1fr)_260px] gap-6">
-              <div className="relative h-[380px] rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white shadow-inner">
-                <svg
-                  viewBox="0 0 400 320"
-                  className="absolute inset-0 m-auto h-full w-full text-slate-400"
-                >
-                  <g
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  >
-                    <line x1="120" y1="170" x2="190" y2="120" />
-                    <line x1="190" y1="120" x2="260" y2="170" />
-                    <line x1="190" y1="120" x2="200" y2="60" />
-                    <line x1="120" y1="170" x2="120" y2="240" />
-                    <line x1="260" y1="170" x2="300" y2="230" />
-                    <line x1="200" y1="60" x2="260" y2="90" />
-                  </g>
-                  <g fill="white" stroke="currentColor" strokeWidth="1.5">
-                    <circle cx="190" cy="120" r="16" className="fill-white" />
-                    <circle cx="200" cy="60" r="12" className="fill-white" />
-                    <circle cx="260" cy="90" r="12" className="fill-white" />
-                    <circle cx="120" cy="170" r="14" className="fill-white" />
-                    <circle cx="260" cy="170" r="14" className="fill-white" />
-                    <circle cx="300" cy="230" r="12" className="fill-white" />
-                    <circle cx="120" cy="240" r="12" className="fill-white" />
-                  </g>
-                </svg>
-                <div className="absolute left-6 top-6 rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white shadow">
-                  태그 기반 노드
-                </div>
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-white/90 px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm">
-                  노드를 선택하면 메모가 오른쪽에 나타납니다.
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-4 rounded-xl border border-slate-100 bg-slate-50/70 p-4 shadow-inner">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold text-slate-800">
-                    태그 빈도
-                  </div>
-                  <div className="text-xs font-medium text-slate-500">
-                    최근 30일
-                  </div>
-                </div>
-                <div className="flex items-center justify-center">
-                  <div className="h-40 w-40 rounded-full bg-[conic-gradient(#0f172a_0deg_120deg,#1e293b_120deg_210deg,#94a3b8_210deg_360deg)] shadow-inner" />
-                </div>
-                <div className="space-y-2">
-                  {[
-                    { label: "아이디어", value: "45%", color: "bg-slate-900" },
-                    { label: "업무", value: "25%", color: "bg-slate-700" },
-                    { label: "리서치", value: "30%", color: "bg-slate-400" },
-                  ].map((item) => (
-                    <div
-                      key={item.label}
-                      className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm text-slate-700 shadow-sm"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`h-2.5 w-2.5 rounded-full ${item.color}`}
-                        />
-                        {item.label}
-                      </div>
-                      <span className="font-semibold">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <div className="mt-6 h-[480px]">
+              {viewMode === "relationship" ? (
+                <RelationshipView memos={memos} />
+              ) : (
+                <ChartView memos={memos} />
+              )}
             </div>
           </section>
 
