@@ -73,6 +73,11 @@ export function MainApp({ user }: MainAppProps) {
   const [isSearching, setIsSearching] = useState(false);
   const memoListRef = useRef<HTMLDivElement>(null);
 
+  // Mobile tab state
+  const [activeTab, setActiveTab] = useState<"memo" | "visualization" | "ai">(
+    "memo"
+  );
+
   // Memo input states
   const [memoTitle, setMemoTitle] = useState("");
   const [memoContent, setMemoContent] = useState("");
@@ -423,41 +428,79 @@ export function MainApp({ user }: MainAppProps) {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] bg-[length:20px_20px] py-8">
-      <div className="mx-auto flex h-[1000px] flex-col gap-6 px-6">
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] bg-[length:20px_20px] py-4 md:py-8">
+      <div className="mx-auto flex h-screen w-full flex-col gap-4 px-4 md:h-[1000px] md:gap-6 md:px-6">
         <header className="flex flex-shrink-0 flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-semibold text-slate-900">
+            <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
               AI MEMO LAB
             </h1>
-            <p className="text-sm text-slate-600">
+            <p className="hidden text-sm text-slate-600 md:block">
               작성 → 태그 추천 → 시각화 → AI 제안까지 한 화면에서 확인하세요.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-slate-700">
-              {user.email?.split("@")[0]}님 환영해요
+          <div className="flex items-center gap-2 md:gap-3">
+            <span className="text-xs font-medium text-slate-700 md:text-sm">
+              {user.email?.split("@")[0]}님
             </span>
             <button
               onClick={handleSignOut}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md md:gap-2 md:px-4 md:py-2 md:text-sm"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-3.5 w-3.5 md:h-4 md:w-4" />
               로그아웃
             </button>
           </div>
         </header>
 
-        <div className="grid flex-1 grid-cols-[1fr_2fr_1fr] gap-4 overflow-hidden">
+        {/* Mobile Tab Navigation */}
+        <div className="flex flex-shrink-0 gap-2 md:hidden">
+          <button
+            onClick={() => setActiveTab("memo")}
+            className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+              activeTab === "memo"
+                ? "bg-slate-900 text-white shadow-sm"
+                : "bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            메모
+          </button>
+          <button
+            onClick={() => setActiveTab("visualization")}
+            className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+              activeTab === "visualization"
+                ? "bg-slate-900 text-white shadow-sm"
+                : "bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            시각화
+          </button>
+          <button
+            onClick={() => setActiveTab("ai")}
+            className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+              activeTab === "ai"
+                ? "bg-slate-900 text-white shadow-sm"
+                : "bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            AI
+          </button>
+        </div>
+
+        <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-[1fr_2fr_1fr]">
           {/* Left Section - Memo Input */}
-          <section className="flex flex-col gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
-            <div className="flex items-center justify-between gap-3">
+          <section
+            className={`flex flex-col gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur ${
+              activeTab !== "memo" ? "hidden md:flex" : ""
+            }`}
+          >
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">
+                <h2 className="text-base font-semibold text-slate-900 md:text-lg">
                   메모 작성
                 </h2>
               </div>
-              <div className="relative w-32">
+              <div className="relative w-full md:w-32">
                 <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
                 <input
                   type="text"
@@ -537,9 +580,9 @@ export function MainApp({ user }: MainAppProps) {
             </div>
 
             {/* Memo Input Form */}
-            <div className="flex-shrink-0 space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4">
+            <div className="flex-shrink-0 space-y-2.5 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-3 md:space-y-3 md:p-4">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-700">
+                <div className="text-xs font-semibold text-slate-700 md:text-sm">
                   새 메모 작성
                 </div>
               </div>
@@ -677,18 +720,22 @@ export function MainApp({ user }: MainAppProps) {
           </section>
 
           {/* Center Section - Visualization */}
-          <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-sm backdrop-blur">
-            <div className="flex items-start justify-between gap-3">
+          <section
+            className={`relative overflow-hidden rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm backdrop-blur md:p-6 ${
+              activeTab !== "visualization" ? "hidden md:block" : ""
+            }`}
+          >
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   {viewMode === "relationship" ? "Relational" : "Graph"}
                 </p>
-                <h2 className="text-xl font-semibold text-slate-900">
+                <h2 className="text-lg font-semibold text-slate-900 md:text-xl">
                   {viewMode === "relationship"
                     ? "관계형 보기"
                     : "그래프 보기"}
                 </h2>
-                <p className="text-sm text-slate-600">
+                <p className="hidden text-sm text-slate-600 md:block">
                   {viewMode === "relationship" ? (
                     <>
                       관계에 따라 메모를 시각화해요.
@@ -704,33 +751,33 @@ export function MainApp({ user }: MainAppProps) {
                   )}
                 </p>
               </div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 p-1 shadow-inner">
+              <div className="inline-flex w-full items-center gap-1 rounded-full bg-slate-100 p-1 shadow-inner md:w-auto md:gap-2">
                 <button
                   onClick={() => setViewMode("relationship")}
-                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition md:flex-initial md:gap-2 md:px-4 md:py-2 md:text-sm ${
                     viewMode === "relationship"
                       ? "bg-white text-slate-900 shadow-sm"
                       : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  <Network className="h-4 w-4" />
+                  <Network className="h-3.5 w-3.5 md:h-4 md:w-4" />
                   관계형
                 </button>
                 <button
                   onClick={() => setViewMode("chart")}
-                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition md:flex-initial md:gap-2 md:px-4 md:py-2 md:text-sm ${
                     viewMode === "chart"
                       ? "bg-white text-slate-900 shadow-sm"
                       : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  <ChartPie className="h-4 w-4" />
+                  <ChartPie className="h-3.5 w-3.5 md:h-4 md:w-4" />
                   그래프
                 </button>
               </div>
             </div>
 
-            <div className="mt-6 h-[480px]">
+            <div className="mt-3 h-[400px] md:mt-6 md:h-[480px]">
               {viewMode === "relationship" ? (
                 <RelationshipView memos={memos} />
               ) : (
@@ -740,7 +787,11 @@ export function MainApp({ user }: MainAppProps) {
           </section>
 
           {/* Right Section - AI Insights */}
-          <section className="flex flex-col gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
+          <section
+            className={`flex flex-col gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur ${
+              activeTab !== "ai" ? "hidden md:flex" : ""
+            }`}
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
