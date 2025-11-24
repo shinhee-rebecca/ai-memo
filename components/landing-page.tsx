@@ -119,7 +119,7 @@ export function LandingPage() {
 
         {/* Footer */}
         <footer className="mt-20 border-t border-slate-200 pt-8 text-center text-sm text-slate-500">
-          <p>© 2024 AI Memo Lab. Built with Next.js & Supabase.</p>
+          <p>© 2025 AI Memo Lab. Built with Next.js & Supabase.</p>
         </footer>
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   ChartPie,
@@ -59,6 +59,7 @@ export function MainApp({ user }: MainAppProps) {
   const [memos, setMemos] = useState<Memo[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const memoListRef = useRef<HTMLDivElement>(null);
 
   // Memo input states
   const [memoTitle, setMemoTitle] = useState("");
@@ -89,6 +90,21 @@ export function MainApp({ user }: MainAppProps) {
       loadMemos(user.email);
     }
   }, [user]);
+
+  // Auto-scroll to bottom when memos change
+  useEffect(() => {
+    if (memoListRef.current) {
+      memoListRef.current.scrollTop = memoListRef.current.scrollHeight;
+    }
+  }, [memos]);
+
+  // Auto-generate AI insights on initial load if memos exist
+  useEffect(() => {
+    if (memos.length > 0 && suggestions.length === 0 && !isLoadingSuggestions) {
+      handleGenerateSuggestions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memos.length]);
 
   const loadMemos = async (userEmail: string) => {
     try {
@@ -361,11 +377,8 @@ export function MainApp({ user }: MainAppProps) {
       <div className="mx-auto flex h-[1000px] flex-col gap-6 px-6">
         <header className="flex flex-shrink-0 flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-              AI Memo Lab
-            </p>
             <h1 className="text-3xl font-semibold text-slate-900">
-              자동으로 정리되는 메모, 한눈에 보는 패턴
+              AI MEMO LAB
             </h1>
             <p className="text-sm text-slate-600">
               작성 → 태그 추천 → 시각화 → AI 제안까지 한 화면에서 확인하세요.
@@ -390,17 +403,14 @@ export function MainApp({ user }: MainAppProps) {
           <section className="flex flex-col gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  메모 작성
-                </p>
                 <h2 className="text-lg font-semibold text-slate-900">
-                  타임라인 & 입력
+                  메모 작성
                 </h2>
               </div>
               <div className="relative w-32">
                 <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
                 <input
-                  type="search"
+                  type="text"
                   placeholder="검색"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -423,7 +433,10 @@ export function MainApp({ user }: MainAppProps) {
             </div>
 
             {/* Memo Timeline */}
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+            <div
+              ref={memoListRef}
+              className="min-h-0 flex-1 space-y-3 overflow-y-auto"
+            >
               {isSearching ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
@@ -433,7 +446,7 @@ export function MainApp({ user }: MainAppProps) {
                   아직 메모가 없습니다. 첫 메모를 작성해보세요!
                 </div>
               ) : (
-                memos.map((memo) => (
+                [...memos].reverse().map((memo) => (
                   <article
                     key={memo.id}
                     className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition hover:border-slate-200 hover:bg-white"
@@ -617,9 +630,19 @@ export function MainApp({ user }: MainAppProps) {
                     : "그래프 보기"}
                 </h2>
                 <p className="text-sm text-slate-600">
-                  {viewMode === "relationship"
-                    ? "관계에 따라 메모를 시각화해요. 노드에 마우스를 올려 상세를 확인하세요."
-                    : "태그의 빈도에 따라 메모를 시각화해요. 그래프에 마우스를 올려 상세를 확인하세요."}
+                  {viewMode === "relationship" ? (
+                    <>
+                      관계에 따라 메모를 시각화해요.
+                      <br />
+                      노드에 마우스를 올려 상세를 확인하세요.
+                    </>
+                  ) : (
+                    <>
+                      태그의 빈도에 따라 메모를 시각화해요.
+                      <br />
+                      그래프에 마우스를 올려 상세를 확인하세요.
+                    </>
+                  )}
                 </p>
               </div>
               <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 p-1 shadow-inner">
